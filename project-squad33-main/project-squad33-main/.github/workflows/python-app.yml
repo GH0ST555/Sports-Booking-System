@@ -1,0 +1,37 @@
+name: Python application
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs at 12am UTC every day
+
+permissions:
+  contents: read
+
+jobs:
+  run-script:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.6
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.6"
+
+    - uses: syphar/restore-virtualenv@v1
+      id: cache-virtualenv
+      with:
+        requirement_files: ${{ github.workspace }}/code/requirements.txt
+
+    - uses: syphar/restore-pip-download-cache@v1
+      if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+      
+    - run: 
+        python -m pip install --upgrade pip
+        pip install -r ${{ github.workspace }}/code/requirements.txt
+      if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+
+    - name: Run Python script
+      run: |
+        cd ${{ github.workspace }}/code
+        python update_sessions.py
+

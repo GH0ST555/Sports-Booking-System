@@ -1,0 +1,80 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Python application
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.6
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.6"
+
+
+      
+    - uses: syphar/restore-virtualenv@v1
+      id: cache-virtualenv
+      with:
+        requirement_files: ${{ github.workspace }}/code/requirements.txt
+
+    - uses: syphar/restore-pip-download-cache@v1
+      if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+      
+    - run: 
+        python -m pip install --upgrade pip
+        pip install -r ${{ github.workspace }}/code/requirements.txt
+      if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+      
+    - name: Test with pytest
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+        cd ${{ github.workspace }}/code/tests
+        pytest
+        
+    - name: Prevent merge on failure
+      if: ${{ failure() }}
+      run: |
+          echo "Tests failed. Cancelling merge."
+          exit 1
+          
+          
+          
+  cancel_merge:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel merge
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const context = github.context.payload;
+            const octokit = new github.GitHub(process.env.GITHUB_TOKEN);
+            const { data: pullRequest } = await octokit.pulls.get({
+              owner: context.repository.owner.login,
+              repo: context.repository.name,
+              pull_number: context.issue.number
+            });
+            await octokit.pulls.update({
+              owner: context.repository.owner.login,
+              repo: context.repository.name,
+              pull_number: context.issue.number,
+              state: 'closed',
+              labels: pullRequest.labels.concat('merge-failed')
+            });
+        if: ${{ failure() }}
