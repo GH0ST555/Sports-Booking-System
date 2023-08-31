@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.4.0/main.min.css">
+    <title>calendar</title>
+
+    <style>
+        /* Define the styles for the popup element */
+        #popup {
+            display: none;
+            position: absolute;
+            z-index: 999;
+            background-color:black;
+            border: 1px solid #cccccc;
+            padding: 10px;
+            color:white;
+            
+        }
+        body {
+            background-color: black;
+            color: white;
+        }
+    
+        #calendar {
+            max-width: 1100px;
+            margin: left;
+            background-color: black;
+        }
+        :root{
+            --fc-button-text-color: #fff;
+            --fc-button-bg-color: orange;
+            --fc-button-hover-bg-color: #B58B00;
+            --fc-button-hover-border-color: #B58B00;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.4.0/main.min.js"></script>
+</head>
+<body>
+    <div id="calendar"> </div>
+    <div id="popup"></div>
+
+    <script>
+      let calendarEl = document.getElementById('calendar');
+      let calendar = new FullCalendar.Calendar(calendarEl, {
+          events: [
+              {% for event in events %}
+                  {
+                      title: '{{ event.todo }}: {{ event.Facility_name }}',
+                      start: '{{ event.date }}',
+                      color: '{{ event.color }}',
+                      todo: '{{ event.todo }}',
+                      facilityName: '{{ event.Facility_name }}',
+                      javadate: '{{event.javadate}}',
+                      activityid: '{{event.activityid}}',
+                      booked: '{{event.booked}}'
+                  },
+              {% endfor %}
+          ],
+          eventDidMount: function (info) {
+              info.el.addEventListener('click', () => {
+                  const eventData = info.event.extendedProps;
+                  const popupEl = document.getElementById('popup');
+                  const dateObj = new Date(Date.parse(eventData.javadate));
+                  const day = dateObj.getDate().toString().padStart(2, '0');
+                  const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+                  const year = dateObj.getFullYear().toString();
+                  const dateStr = `${day}-${month}-${year}`;
+  
+                  if (eventData.booked === 'True') {
+                      popupEl.innerHTML = `
+                          <h3>Your Booked Session</h3>
+                          <h4>${eventData.todo}: ${eventData.facilityName}</h4>
+                          <p>Date: ${dateStr} </p>
+                          <button id="popup_button">Close</button>
+                          <button id="viewnow">View booking</button>
+
+                  
+                      `}
+                        else {
+                          popupEl.innerHTML = `
+                          <h3>${eventData.todo}: ${eventData.facilityName}</h3>
+                          <p>Date: ${dateStr} </p>
+                          <p>Select time:</p>
+                          <select id="time_select">
+                          <option value="">--Select--</option>
+                          </select>
+                          <p id="remaining_cap">Remaining Capacity:</p>
+                          <p>Enter Booking Size:</p>
+                          <input id="booksize" type="number" max="{{remaining_cap}}">
+                          <button id="popup_button">Close</button>
+                          <button id="booknow">Book Now</button>
+                          `
+                          
+                        };
+
+            $.ajax({
+        url: `/data_session/${eventData.activityid}/${eventData.facilityName}/${eventData.javadate}`,
+        type: 'POST',
+        success: function (data) {
+        // Populate the select field with the available time slots
+        const timeSelect = document.getElementById('time_select');
+        timeSelect.innerHTML = '<option value="">--Select--</option>';
+        for (let i = 0; i < data.length; i++) {
+            timeSelect.innerHTML += `<option value="${data[i].session_id}" data-remaining="${data[i].Remaining_Cap}">${data[i].Start_time} -${data[i].End_time} </option>`;
+        }
+
+
+        
+
+        // Show the remaining capacity for the selected time slot
+        timeSelect.addEventListener('change', () => {
+            const remainingCap = document.getElementById('remaining_cap');
+            const selectedOption = timeSelect.options[timeSelect.selectedIndex];
+            const remaining = selectedOption.getAttribute('data-remaining');
+            const bookSizeInput = document.getElementById('booksize');
+            bookSizeInput.max = remaining;
+            remainingCap.innerHTML = `Remaining Capacity: ${remaining}`;
+
+        });
+    }
+});
+              // Position the popup element relative to the event
+              const eventRect = info.el.getBoundingClientRect();
+              popupEl.style.position = 'fixed';
+              popupEl.style.position = 'fixed';
+              popupEl.style.right = '0'; // Set the right position to 0 to align the popup with the right edge of the screen
+              popupEl.style.top = '50%'; // Set the top position to 50% from the top of the viewport
+              popupEl.style.transform = 'translateY(-50%)'; // Center the popup verticall
+
+
+            popupEl.style.display = 'block';
+              $('#popup_button').on('click', function () {
+                // Hide the popup element
+                const popupEl = document.getElementById('popup');
+                popupEl.style.display = 'none';
+              });
+              $('#viewnow').on('click', function () {
+                // Hide the popup element
+                window.location.href = '/my_bookings';
+              });
+
+              $('#booknow').on('click', function() {
+                const remainingCap = parseInt(document.getElementById('remaining_cap').textContent.split(': ')[1]);
+                const booksize = parseInt(document.getElementById('booksize').value);
+                const sessionSelect = document.getElementById('time_select');
+                const sessionId = sessionSelect.value;
+                if (booksize > remainingCap) {
+                    alert('Booking size cannot be greater than remaining capacity!');
+                    return;
+                }
+                if (sessionId === '') {
+        alert('Please select a session time!');
+        return;
+    }
+
+    // Make the booking request
+    $.ajax({
+        url: `/calendar_book_session/${sessionId}/${eventData.activityid}/${booksize}`,
+        type: 'POST',
+        success: function (data) {
+            // Hide the popup element
+            const popupEl = document.getElementById('popup');
+            popupEl.style.display = 'none';
+
+            // Redirect to the checkout page
+            window.location.href = '/checkout_page';
+        }
+    });
+        });
+            });
+          },
+        });
+
+
+      
+        calendar.render();
+      </script>
+      
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+            
+
+<script type = "module" src="{{ url_for('static', filename='javascript/calendar.js') }}"></script>
+</body>
+</html>
